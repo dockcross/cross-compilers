@@ -8,8 +8,12 @@ ENV LLVM_VERSION=19
 ENV WASI_VERSION=25
 ENV WASI_VERSION_FULL=${WASI_VERSION}.0
 
-COPY download-install-wasi-sdk.sh /usr/local/bin/
-RUN /usr/local/bin/download-install-wasi-sdk.sh
+ENV WASMTIME_HOME=/wasi-runtimes/wasmtime
+RUN mkdir -p ${WASMTIME_HOME} && curl https://wasmtime.dev/install.sh -sSf | bash
+ENV PATH="$WASMTIME_HOME/bin:$PATH"
+
+COPY download-build-install-wasi-sdk.sh /usr/local/bin/
+RUN /usr/local/bin/download-build-install-wasi-sdk.sh
 
 ENV WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot
 ENV WASI_SDK_PATH=/opt/wasi-sdk

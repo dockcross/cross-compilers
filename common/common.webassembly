@@ -43,10 +43,10 @@ RUN git clone --recurse-submodules https://github.com/WebAssembly/wabt.git && \
   cd ../ && \
   rm -rf wabt*
 
-RUN mkdir /wasi-runtimes
+RUN mkdir -p /wasi-runtimes
 
 ENV WASMTIME_HOME=/wasi-runtimes/wasmtime
-RUN mkdir ${WASMTIME_HOME} && curl https://wasmtime.dev/install.sh -sSf | bash
+RUN mkdir -p ${WASMTIME_HOME} && curl https://wasmtime.dev/install.sh -sSf | bash
 COPY imagefiles/wasmtime-pwd.sh ${WASMTIME_HOME}/bin/
 COPY imagefiles/wasmtime-pwd-threads.sh ${WASMTIME_HOME}/bin/
 ENV PATH="$WASMTIME_HOME/bin:$PATH"

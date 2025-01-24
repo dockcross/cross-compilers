@@ -9,10 +9,13 @@ on:
       - "*"
   workflow_dispatch:
 
+env:
+  OCI_EXE: docker
+
 jobs:
   base:
     name: base
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout code
         uses: actions/checkout@v4
@@ -20,15 +23,7 @@ jobs:
           submodules: "recursive"
           fetch-depth: 1
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: build
-        env:
-          BUILD_CMD: buildx build --platform linux/amd64,linux/arm64
         run: make base
 
       - name: test
@@ -52,19 +47,64 @@ jobs:
             docker login -u ${{ secrets.DOCKER_USER }} -p ${{ secrets.DOCKER_PASS }}
             docker image push dockcross/base --all-tags
 
+  base-multiarch:
+    name: base-multiarch
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 5
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+          fetch-depth: 1
+
+      - name: set host_arch
+        run: |
+          echo "HOST_ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> $GITHUB_ENV
+
+      - name: build multiarch
+        run: |
+          make base-${{ env.HOST_ARCH }}
+
+      - name: test multiarch
+        run: |
+          mkdir -p bin
+          make base-${{ env.HOST_ARCH }}.test
+
+      - name: archive base
+        run: |
+          mkdir -p cache
+          docker export dockcross/base:latest-${{ env.HOST_ARCH }} | xz -e9 -T0 > ./cache/base.tar.xz
+
+      - name: save base
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-${{ matrix.os }}
+          path: ./cache
+          retention-days: 3
+
+      - name: deploy
+        if: github.ref == 'refs/heads/master'
+        run: |
+            docker login -u ${{ secrets.DOCKER_USER }} -p ${{ secrets.DOCKER_PASS }}
+            docker image push dockcross/base --all-tags
+
   image:
-    name: ${{ matrix.arch_name.image }}
-    needs: base
-    runs-on: ubuntu-latest
-    env:
-      OCI_EXE: docker
+    name: ${{ matrix.arch_name.image }}_on_${{ matrix.os }}
+    needs: [base, base-multiarch]
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
         arch_name:
           # Android images
           - {
               image: "android-arm",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv7 COMP=ndk",
               ninja: "no",
@@ -86,6 +126,7 @@ jobs:
             }
           - {
               image: "android-arm64",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv8 COMP=ndk",
               ninja: "no",
@@ -107,6 +148,7 @@ jobs:
             }
           - {
               image: "android-x86",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-32 COMP=ndk",
               ninja: "no",
@@ -128,6 +170,7 @@ jobs:
             }
           - {
               image: "android-x86_64",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64 COMP=ndk",
               ninja: "no",
@@ -150,6 +193,7 @@ jobs:
           # Linux arm64/armv8 images
           - {
               image: "linux-arm64",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv8",
               ninja: "yes",
@@ -171,6 +215,7 @@ jobs:
             }
           - {
               image: "linux-arm64-lts",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv8",
               ninja: "yes",
@@ -192,6 +237,7 @@ jobs:
             }
           - {
               image: "linux-arm64-musl",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv8",
               ninja: "yes",
@@ -213,6 +259,7 @@ jobs:
             }
           - {
               image: "linux-arm64-full",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv8",
               ninja: "yes",
@@ -235,6 +282,7 @@ jobs:
           # Linux mipel images
           - {
               image: "linux-mipsel-lts",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -257,6 +305,7 @@ jobs:
           # Linux armv5 images
           - {
               image: "linux-armv5",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -278,6 +327,7 @@ jobs:
             }
           - {
               image: "linux-armv5-musl",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -299,6 +349,7 @@ jobs:
             }
           - {
               image: "linux-armv5-uclibc",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -321,6 +372,7 @@ jobs:
           # Linux armv6 images
           - {
               image: "linux-armv6",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -342,6 +394,7 @@ jobs:
             }
           - {
               image: "linux-armv6-lts",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -363,6 +416,7 @@ jobs:
             }
           - {
               image: "linux-armv6-musl",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -385,6 +439,7 @@ jobs:
           # Linux armv7 images
           - {
               image: "linux-armv7",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv7",
               ninja: "yes",
@@ -406,6 +461,7 @@ jobs:
             }
           - {
               image: "linux-armv7a",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv7-neon",
               ninja: "yes",
@@ -427,6 +483,7 @@ jobs:
             }
           - {
               image: "linux-armv7a-lts",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv7-neon",
               ninja: "yes",
@@ -448,6 +505,7 @@ jobs:
             }
           - {
               image: "linux-armv7-lts",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv7",
               ninja: "yes",
@@ -469,6 +527,7 @@ jobs:
             }
           - {
               image: "linux-armv7l-musl",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=armv7",
               ninja: "yes",
@@ -491,6 +550,7 @@ jobs:
           # Linux x86 images
           - {
               image: "linux-x86",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-32-sse41-popcnt",
               ninja: "yes",
@@ -513,6 +573,7 @@ jobs:
           # Linux i686 images
           - {
               image: "linux-i686",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -535,6 +596,7 @@ jobs:
           # Linux x86_64 images
           - {
               image: "linux-x64",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64-modern",
               ninja: "yes",
@@ -556,6 +618,7 @@ jobs:
             }
           - {
               image: "linux-x64-tinycc",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64-modern",
               ninja: "yes",
@@ -577,6 +640,7 @@ jobs:
             }
           - {
               image: "linux-x64-clang",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64-modern COMP=clang",
               ninja: "yes",
@@ -598,6 +662,7 @@ jobs:
             }
           - {
               image: "linux-x86_64-full",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64-modern",
               ninja: "yes",
@@ -620,6 +685,7 @@ jobs:
           # Linux riscv images
           - {
               image: "linux-riscv32",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -641,6 +707,7 @@ jobs:
             }
           - {
               image: "linux-riscv64",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -663,6 +730,7 @@ jobs:
           # Linux s390x images
           - {
               image: "linux-s390x",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -685,6 +753,7 @@ jobs:
           # Linux mips images 
           - {
               image: "linux-mips",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -706,6 +775,7 @@ jobs:
             }
           - {
               image: "linux-mips-uclibc",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -728,6 +798,7 @@ jobs:
           # Linux mips images
           - {
               image: "linux-mips-lts",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -772,6 +843,7 @@ jobs:
           # Linux ppc64le images
           - {
               image: "linux-ppc64le",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=ppc-64",
               ninja: "yes",
@@ -794,6 +866,7 @@ jobs:
           # Linux ppc64le-lts images
           - {
               image: "linux-ppc64le-lts",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=ppc-64",
               ninja: "yes",
@@ -816,6 +889,7 @@ jobs:
           # Linux m68k images
           - {
               image: "linux-m68k-uclibc",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -838,6 +912,7 @@ jobs:
           # Linux xtensa images
           - {
               image: "linux-xtensa-uclibc",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "yes",
@@ -860,6 +935,7 @@ jobs:
           # Windows x86_x64 images
           - {
               image: "windows-static-x64",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64-modern COMP=mingw",
               ninja: "no",
@@ -881,6 +957,7 @@ jobs:
             }
           - {
               image: "windows-static-x64-posix",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64-modern COMP=mingw",
               ninja: "no",
@@ -902,6 +979,7 @@ jobs:
             }
           - {
               image: "windows-shared-x64",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -923,6 +1001,7 @@ jobs:
             }
           - {
               image: "windows-shared-x64-posix",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -945,6 +1024,7 @@ jobs:
           # Windows x86 images
           - {
               image: "windows-static-x86",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-32-sse41-popcnt COMP=mingw",
               ninja: "no",
@@ -966,6 +1046,7 @@ jobs:
             }
           - {
               image: "windows-shared-x86",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -988,6 +1069,7 @@ jobs:
           # Windows arm images
           - {
               image: "windows-armv7",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "ARCH=armv7-neon COMP=clang",
               ninja: "yes",
@@ -1009,6 +1091,7 @@ jobs:
             }
           - {
               image: "windows-arm64",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "ARCH=armv8 COMP=clang",
               ninja: "yes",
@@ -1031,6 +1114,7 @@ jobs:
           # manylinux_2_28 images
           - {
               image: "manylinux_2_28-x64",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64-modern",
               ninja: "yes",
@@ -1053,6 +1137,7 @@ jobs:
           # manylinux2014 images
           - {
               image: "manylinux2014-x86",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-32-sse41-popcnt",
               ninja: "yes",
@@ -1074,6 +1159,7 @@ jobs:
             }
           - {
               image: "manylinux2014-x64",
+              multiarch: "",
               stockfish: "yes",
               stockfish_arg: "ARCH=x86-64-modern",
               ninja: "yes",
@@ -1095,6 +1181,7 @@ jobs:
             }
           - {
               image: "manylinux2014-aarch64",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -1117,6 +1204,7 @@ jobs:
           # web-wasm images
           - {
               image: "web-wasm",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -1138,6 +1226,7 @@ jobs:
             }
           - {
               image: "web-wasi",
+              multiarch: "yes",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -1159,6 +1248,7 @@ jobs:
             }
           - {
               image: "web-wasi-threads",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -1181,6 +1271,7 @@ jobs:
           # Bare metal images
           - {
               image: "bare-armv7emhf-nano_newlib",
+              multiarch: "",
               stockfish: "no",
               stockfish_arg: "",
               ninja: "no",
@@ -1211,6 +1302,9 @@ jobs:
           submodules: "recursive"
           fetch-depth: 1
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - uses: actions/download-artifact@v4
         with:
           name: cache
@@ -1219,17 +1313,40 @@ jobs:
       - name: load base
         run: xz -d -k < ./cache/base.tar.xz | docker import - dockcross/base:latest
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: cache-${{ matrix.os }}
+          path: ./cache
+
+      - name: load multiarch base
+        run: xz -d -k < ./cache/base.tar.xz | docker import - dockcross/base:latest
+
+      - name: load base
+        run: xz -d -k < ./cache/base.tar.xz | docker import - dockcross/base:latest
+
+      - name: set host_arch
+        run: |
+          echo "HOST_ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> $GITHUB_ENV
+
       - name: build
         env:
           BUILD_CMD: build --cache-from type=gha --cache-to type=gha,mode=max
-        run: make ${{ matrix.arch_name.image }}
+        run: |
+          if test "${{ matrix.arch_name.multiarch }}" = "yes"; then
+            make ${{ matrix.arch_name.image }}
+          elif test "${{ env.HOST_ARCH }}" = "amd64"; then
+            make ${{ matrix.arch_name.image }}
+          fi
 
       - name: basic test
-        run: make ${{ matrix.arch_name.image }}.test
+        run: |
+          if test "${{ matrix.arch_name.multiarch }}" = "yes" || test "${{ env.HOST_ARCH }}" = "amd64"; then
+            make ${{ matrix.arch_name.image }}.test
+          fi
 
       # Updated on 19/05/2022
       - name: stockfish build test
-        if: ${{ matrix.arch_name.stockfish == 'yes' }}
+        if: ${{ matrix.arch_name.stockfish == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone --depth 1 --branch sf_15 https://github.com/official-stockfish/Stockfish.git
           cd Stockfish/src
@@ -1240,7 +1357,7 @@ jobs:
 
       # Updated on 12/09/2022
       - name: ninja build test
-        if: ${{ matrix.arch_name.ninja == 'yes' }}
+        if: ${{ matrix.arch_name.ninja == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone --depth 1 --branch v1.11.1 https://github.com/ninja-build/ninja.git
           cd ninja
@@ -1248,7 +1365,7 @@ jobs:
 
       # Updated on 12/09/2022
       - name: openssl build test
-        if: ${{ matrix.arch_name.openssl == 'yes' }}
+        if: ${{ matrix.arch_name.openssl == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone --depth 1 --branch OpenSSL_1_1_1q https://github.com/openssl/openssl.git
           cd openssl
@@ -1261,7 +1378,7 @@ jobs:
 
       # Updated on 12/09/2022
       - name: C build test
-        if: ${{ matrix.arch_name.C == 'yes' }}
+        if: ${{ matrix.arch_name.C == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone https://github.com/TheAlgorithms/C.git
           cd C
@@ -1272,7 +1389,7 @@ jobs:
 
       # Updated on 12/09/2022 No longer maintained
       - name: C-Plus-Plus build test
-        if: ${{ matrix.arch_name.C-Plus-Plus == 'yes' }}
+        if: ${{ matrix.arch_name.C-Plus-Plus == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone https://github.com/TheAlgorithms/C-Plus-Plus.git
           cd C-Plus-Plus
@@ -1283,7 +1400,7 @@ jobs:
 
       # Updated on 03/08/2024
       - name: llama.cpp build test
-        if: ${{ matrix.arch_name.llama_cpp == 'yes' }}
+        if: ${{ matrix.arch_name.llama_cpp == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone https://github.com/ggerganov/llama.cpp.git
           cd llama.cpp
@@ -1294,7 +1411,7 @@ jobs:
 
       # Updated on 12/09/2022
       - name: fmt build test
-        if: ${{ matrix.arch_name.fmt == 'yes' }}
+        if: ${{ matrix.arch_name.fmt == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone --depth 1 --branch 9.1.0 https://github.com/fmtlib/fmt.git
           cd fmt
@@ -1304,7 +1421,7 @@ jobs:
 
       # Updated on 19/05/2022
       - name: cpython build test
-        if: ${{ matrix.arch_name.cpython == 'yes' }}
+        if: ${{ matrix.arch_name.cpython == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone --depth 1 --branch v3.11.2 https://github.com/python/cpython.git
           cd cpython
@@ -1315,7 +1432,7 @@ jobs:
 
       # Updated on 12/09/2022 (4.2.0 branch not working)
       - name: raylib build test
-        if: ${{ matrix.arch_name.raylib == 'yes' }}
+        if: ${{ matrix.arch_name.raylib == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone https://github.com/raysan5/raylib.git
           cd raylib
@@ -1326,7 +1443,7 @@ jobs:
 
       # Updated on 31/3/2022
       - name: mbedtls build test
-        if: ${{ matrix.arch_name.mbedtls == 'yes' }}
+        if: ${{ matrix.arch_name.mbedtls == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone --depth 1 --branch archive/baremetal https://github.com/Mbed-TLS/mbedtls.git
           cd mbedtls
@@ -1337,7 +1454,7 @@ jobs:
 
       # Updated on 20/6/2022
       - name: libopencm3 build test
-        if: ${{ matrix.arch_name.libopencm3 == 'yes' }}
+        if: ${{ matrix.arch_name.libopencm3 == 'yes' && (matrix.arch_name.multiarch == 'yes' || env.HOST_ARCH == 'amd64') }}
         run: |
           git clone https://github.com/libopencm3/libopencm3.git
           cd libopencm3

@@ -1,5 +1,6 @@
 ARG ORG=dockcross
-FROM ${ORG}/web-wasi:latest
+ARG HOST_ARCH=amd64
+FROM ${ORG}/web-wasi:latest-${HOST_ARCH}
 
 LABEL maintainer="Matt McCormick matt@mmmccormick.com"
 
@@ -10,6 +11,6 @@ ENV CC=clang-wasi-threads-sysroot.sh \
     CXX=clang++-wasi-threads-sysroot.sh
 
 COPY Toolchain.cmake ${CROSS_ROOT}/
-ENV CMAKE_TOOLCHAIN_FILE ${CROSS_ROOT}/Toolchain.cmake
+ENV CMAKE_TOOLCHAIN_FILE=${CROSS_ROOT}/Toolchain.cmake
 
 #include "common.label-and-env"
